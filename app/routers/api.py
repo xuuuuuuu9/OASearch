@@ -225,10 +225,44 @@ async def api_create_download_task(payload: DownloadRequest) -> dict[str, Any]:
         eligible = [r["doi"] for r in await cur.fetchall()]
         if not eligible:
             raise HTTPException(400, "no eligible papers to download")
+        # Issuing a download task implies the user wants this paper in their
+        # library — mark saved so it shows up there once the PDF arrives.
+        await repo.mark_papers_saved(db, eligible)
         task_id = await repo.create_download_task(db, eligible)
         task = await repo.get_task(db, task_id)
     spawn_download_task(task_id, str(DB_PATH))
     return task or {"id": task_id}
+
+
+class SavePapersRequest(BaseModel):
+    dois: list[str]
+
+
+@router.post("/papers/save")
+async def api_save_papers(payload: SavePapersRequest) -> dict[str, Any]:
+    """Flip saved=1 on each given DOI so it shows up in the local library."""
+    async with get_db() as db:
+        updated = await repo.mark_papers_saved(db, payload.dois)
+    return {"updated": updated, "requested": len(payload.dois)}
+
+
+@router.delete("/papers/{doi:path}")
+async def api_delete_paper(doi: str) -> dict[str, Any]:
+    """Hard-delete a paper from the library; also unlinks the PDF if present."""
+    async with get_db() as db:
+        deleted, pdf_path = await repo.delete_paper(db, doi)
+    if not deleted:
+        raise HTTPException(404, "paper not found")
+    if pdf_path:
+        from pathlib import Path
+        from ..config import PDF_DIR
+        f = Path(PDF_DIR) / pdf_path
+        if f.exists():
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    return {"deleted": True, "pdf_removed": bool(pdf_path)}
 
 
 @router.get("/download-tasks/{task_id}")

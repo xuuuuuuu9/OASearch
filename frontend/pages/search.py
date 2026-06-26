@@ -20,6 +20,11 @@ def _badges_row(paper) -> rx.Component:
                     badge("仅元数据")),
         ),
         rx.cond(
+            paper.saved,
+            badge("已入库", tone="accent"),
+            badge("未入库"),
+        ),
+        rx.cond(
             SearchState.selected_dois.contains(paper.doi),
             badge("已加入批量", tone="warn"),
             rx.fragment(),
@@ -161,10 +166,21 @@ def _results() -> rx.Component:
                 width="100%",
                 align="stretch",
             ),
-            right=badge(
-                "已选 " + SearchState.selected_dois.length().to_string(use_json=False)
-                + " 篇",
-                tone="success",
+            right=rx.hstack(
+                badge(
+                    "已选 " + SearchState.selected_dois.length().to_string(use_json=False)
+                    + " 篇",
+                    tone="success",
+                ),
+                button("全选可下载", variant="ghost",
+                       on_click=SearchState.select_all_downloadable),
+                button("全选", variant="ghost",
+                       on_click=SearchState.select_all_results),
+                button("清空", variant="ghost",
+                       on_click=SearchState.clear_selection),
+                spacing="2",
+                align="center",
+                wrap="wrap",
             ),
         ),
         patterns.empty("暂无结果", "输入关键词并点击「开始检索」。"),
@@ -216,7 +232,9 @@ def _toolbar() -> rx.Component:
         actions=[
             button("清除", variant="ghost",
                    on_click=SearchState.clear_selection),
-            button("加入下载", variant="primary", icon=DOWNLOAD,
+            button("保存元数据", variant="secondary",
+                   on_click=SearchState.save_selected_metadata),
+            button("保存并下载", variant="primary", icon=DOWNLOAD,
                    on_click=SearchState.start_download),
         ],
     )

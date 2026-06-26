@@ -31,6 +31,9 @@ class LibraryState(rx.State):
     selected_paper_id: int = 0
     drawer_paper: PaperRow = PaperRow()
 
+    # delete confirmation
+    pending_delete_doi: str = ""
+
     async def load_page(self) -> None:
         if self._loaded:
             return
@@ -128,3 +131,26 @@ class LibraryState(rx.State):
 
     def close_drawer(self) -> None:
         self.selected_paper_id = 0
+
+    def request_delete(self, doi: str) -> None:
+        self.pending_delete_doi = doi
+
+    def cancel_delete(self) -> None:
+        self.pending_delete_doi = ""
+
+    async def confirm_delete(self) -> None:
+        doi = self.pending_delete_doi
+        self.pending_delete_doi = ""
+        if not doi:
+            return
+        self.loading = True
+        self.error_message = ""
+        try:
+            from urllib.parse import quote
+            await api.delete_json(f"/api/papers/{quote(doi, safe='')}")
+            self.items = [p for p in self.items if p.doi != doi]
+            self.total = max(0, self.total - 1)
+        except httpx.HTTPError:
+            self.error_message = "删除失败"
+        finally:
+            self.loading = False

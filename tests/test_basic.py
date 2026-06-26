@@ -42,6 +42,9 @@ async def test_schema_and_fts_insert(tmp_path: Path) -> None:
         await db.commit()
         assert pid > 0
 
+        # In the new manual-save model, search_local only returns saved=1 papers.
+        await repo.mark_papers_saved(db, ["10.1016/test1"])
+
         rows, total = await repo.search_local(db, "flavonoid")
         assert total == 1
         assert rows[0]["doi"] == "10.1016/test1"

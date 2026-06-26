@@ -135,6 +135,38 @@ class SearchState(rx.State):
         else:
             self.selected_dois = [*self.selected_dois, doi]
 
+    def select_all_downloadable(self) -> None:
+        """Select every result that has at least one auto-downloadable URL."""
+        self.selected_dois = [
+            p.doi for p in self.papers
+            if p.auto_downloadable_count > 0 and not p.pdf_path
+        ]
+
+    def select_all_results(self) -> None:
+        """Select every result regardless of OA / download status."""
+        self.selected_dois = [p.doi for p in self.papers]
+
+    async def save_selected_metadata(self) -> None:
+        """Mark selected papers as saved=1 (without triggering download)."""
+        if not self.selected_dois:
+            self.error_message = "请先勾选论文"
+            return
+        self.loading = True
+        self.error_message = ""
+        try:
+            await api.post_json("/api/papers/save", {"dois": list(self.selected_dois)})
+            # 标记为已入库后刷新本地状态
+            saved_set = set(self.selected_dois)
+            self.papers = [
+                PaperRow(**{**p.__dict__, "saved": True}) if p.doi in saved_set else p
+                for p in self.papers
+            ]
+            self.selected_dois = []
+        except httpx.HTTPError:
+            self.error_message = "保存到本地库失败"
+        finally:
+            self.loading = False
+
     async def start_download(self) -> None:
         if not self.selected_dois:
             self.error_message = "先选择要下载的论文"
@@ -143,6 +175,12 @@ class SearchState(rx.State):
         self.error_message = ""
         try:
             await api.post_json("/api/download-tasks", {"dois": self.selected_dois})
+            # 创建下载任务时后端已自动 saved=1
+            saved_set = set(self.selected_dois)
+            self.papers = [
+                PaperRow(**{**p.__dict__, "saved": True}) if p.doi in saved_set else p
+                for p in self.papers
+            ]
             self.selected_dois = []
         except httpx.HTTPError:
             self.error_message = "发起下载任务失败"

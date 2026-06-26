@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS papers (
   download_error  TEXT,
   discovered_at   TEXT,
   pmcid           TEXT,
-  candidates_resolved_at TEXT
+  candidates_resolved_at TEXT,
+  saved           INTEGER DEFAULT 0     -- 1 if user explicitly added to local library
 );
 
 CREATE INDEX IF NOT EXISTS idx_papers_issn ON papers(issn);
@@ -161,6 +162,7 @@ async def init_db() -> None:
         for col, ddl in (
             ("pmcid", "ALTER TABLE papers ADD COLUMN pmcid TEXT"),
             ("candidates_resolved_at", "ALTER TABLE papers ADD COLUMN candidates_resolved_at TEXT"),
+            ("saved", "ALTER TABLE papers ADD COLUMN saved INTEGER DEFAULT 0"),
         ):
             cur = await db.execute("PRAGMA table_info(papers);")
             cols = {r[1] for r in await cur.fetchall()}

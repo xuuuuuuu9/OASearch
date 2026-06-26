@@ -27,6 +27,7 @@ class PaperRow:
     authors_list: list[str] = field(default_factory=list)
     abstract: str = ""
     keywords: list[str] = field(default_factory=list)
+    saved: bool = False
 
 
 @dataclass
@@ -86,6 +87,7 @@ def paper_from_dict(data: dict[str, Any]) -> PaperRow:
         authors_list=[str(item) for item in data.get("authors_list") or []],
         abstract=str(data.get("abstract") or ""),
         keywords=keywords,
+        saved=bool(data.get("saved") or False),
     )
 
 

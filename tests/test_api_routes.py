@@ -46,6 +46,7 @@ async def test_journals_and_library_search_routes(tmp_path: Path, monkeypatch: p
             },
             oa={"is_oa": True},
         )
+        await repo.mark_papers_saved(seed_db, ["10.1/test-paper"])
         await seed_db.commit()
 
     @asynccontextmanager
@@ -78,6 +79,59 @@ async def test_journals_and_library_search_routes(tmp_path: Path, monkeypatch: p
         body = filtered.json()
         assert "items" in body and "total" in body
         assert body["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_save_and_delete_paper_endpoints(tmp_path: Path,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.routers import api
+    db_path = tmp_path / "sd.db"
+    await _init_db(db_path)
+    async with aiosqlite.connect(db_path) as seed_db:
+        seed_db.row_factory = aiosqlite.Row
+        await repo.add_journal(seed_db, "0031-9422", "Phytochemistry", "Elsevier")
+        await repo.upsert_paper(
+            seed_db,
+            {
+                "doi": "10.1/sd-paper", "issn": "0031-9422",
+                "title": "T", "authors": [], "abstract": "", "keywords": "",
+                "published_date": "2024-01", "volume": None, "issue": None,
+                "pages": None, "license": None,
+            },
+            oa={"is_oa": True},
+        )
+        await seed_db.commit()
+
+    @asynccontextmanager
+    async def fake_get_db():
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            yield db
+
+    monkeypatch.setattr(api, "get_db", fake_get_db)
+    app = FastAPI()
+    app.include_router(api.router)
+
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://testserver") as client:
+        # before save: not visible in library
+        r1 = await client.get("/api/library/search", params={"q": ""})
+        assert r1.json()["total"] == 0
+        # save it
+        r2 = await client.post("/api/papers/save", json={"dois": ["10.1/sd-paper"]})
+        assert r2.status_code == 200
+        assert r2.json()["updated"] == 1
+        # now visible
+        r3 = await client.get("/api/library/search", params={"q": ""})
+        assert r3.json()["total"] == 1
+        # delete it
+        from urllib.parse import quote
+        r4 = await client.delete(f"/api/papers/{quote('10.1/sd-paper', safe='')}")
+        assert r4.status_code == 200
+        assert r4.json()["deleted"] is True
+        # gone
+        r5 = await client.get("/api/library/search", params={"q": ""})
+        assert r5.json()["total"] == 0
 
 
 @pytest.mark.asyncio

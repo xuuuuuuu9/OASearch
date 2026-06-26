@@ -123,6 +123,32 @@ async def mark_downloaded(
     )
 
 
+async def mark_papers_saved(db: aiosqlite.Connection, dois: list[str]) -> int:
+    """Flip `saved=1` for each DOI present. Returns number of rows updated."""
+    if not dois:
+        return 0
+    placeholders = ",".join(["?"] * len(dois))
+    cur = await db.execute(
+        f"UPDATE papers SET saved=1 WHERE doi IN ({placeholders});",
+        dois,
+    )
+    await db.commit()
+    return cur.rowcount or 0
+
+
+async def delete_paper(db: aiosqlite.Connection, doi: str) -> tuple[bool, Optional[str]]:
+    """Delete a paper row entirely. Returns (deleted, pdf_path_to_unlink)."""
+    cur = await db.execute("SELECT pdf_path FROM papers WHERE doi=?;", (doi,))
+    row = await cur.fetchone()
+    if row is None:
+        return False, None
+    pdf_path = row[0]
+    await db.execute("DELETE FROM paper_candidates WHERE doi=?;", (doi,))
+    await db.execute("DELETE FROM papers WHERE doi=?;", (doi,))
+    await db.commit()
+    return True, pdf_path
+
+
 async def mark_download_failed(db: aiosqlite.Connection, doi: str, err: str) -> None:
     await db.execute("UPDATE papers SET download_error=? WHERE doi=?;", (err, doi))
 
@@ -234,6 +260,9 @@ async def search_local(
         where.append("p.pdf_path IS NOT NULL")
     elif scope == "meta":
         where.append("p.pdf_path IS NULL")
+
+    # Library only shows papers the user has explicitly saved.
+    where.append("p.saved = 1")
 
     if issns:
         placeholders = ",".join(["?"] * len(issns))

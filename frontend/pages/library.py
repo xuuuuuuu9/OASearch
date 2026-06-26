@@ -10,6 +10,7 @@ from frontend.design.icons import (
     EXTERNAL_LINK,
     FILTER,
     SEARCH,
+    TRASH,
 )
 from frontend.design.primitives import badge, button, divider, text
 from frontend.state.library_state import LibraryState
@@ -150,11 +151,43 @@ def _row(item) -> rx.Component:
         selected=None,  # 文库页不支持批量选择
         on_open_detail=LibraryState.open_drawer(item.id),
         primary_action=primary,
-        secondary_action=rx.link(
-            button("DOI", variant="ghost", icon=EXTERNAL_LINK),
-            href="https://doi.org/" + item.doi.to_string(use_json=False),
-            is_external=True,
+        secondary_action=rx.hstack(
+            rx.link(
+                button("DOI", variant="ghost", icon=EXTERNAL_LINK),
+                href="https://doi.org/" + item.doi.to_string(use_json=False),
+                is_external=True,
+            ),
+            button("删除", variant="danger", icon=TRASH,
+                   on_click=LibraryState.request_delete(item.doi)),
+            spacing="2",
         ),
+    )
+
+
+def _delete_dialog() -> rx.Component:
+    return rx.alert_dialog.root(
+        rx.alert_dialog.content(
+            rx.alert_dialog.title("确认从本地库删除"),
+            rx.alert_dialog.description(
+                "将删除 DOI " + LibraryState.pending_delete_doi
+                + " 的元数据。如有本地 PDF 也会一并删除。"
+            ),
+            rx.hstack(
+                rx.alert_dialog.cancel(
+                    button("取消", variant="secondary",
+                           on_click=LibraryState.cancel_delete),
+                ),
+                rx.alert_dialog.action(
+                    button("确认删除", variant="danger",
+                           on_click=LibraryState.confirm_delete),
+                ),
+                spacing="3",
+                justify="end",
+                width="100%",
+            ),
+        ),
+        open=LibraryState.pending_delete_doi != "",
+        on_open_change=LibraryState.cancel_delete,
     )
 
 
@@ -249,7 +282,12 @@ def _main_area() -> rx.Component:
 def library_page() -> rx.Component:
     body = rx.hstack(
         _sidebar(),
-        _main_area(),
+        rx.vstack(
+            _main_area(),
+            _delete_dialog(),
+            width="100%",
+            align="stretch",
+        ),
         width="100%",
         align="start",
         spacing="3",
