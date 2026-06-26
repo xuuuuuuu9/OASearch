@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # the built-in DEFAULT_MIRRORS in app/clients/scihub.py.
     scihub_mirrors: str = ""
 
+    # Semantic Scholar Graph API key (optional). Without it the public rate
+    # limit is ~0.33 req/s; with a key it can go up to ~10 req/s.
+    semantic_scholar_api_key: str = ""
+
     @property
     def app_user_agent(self) -> str:
         return f"NPLibrary/0.1 (mailto:{self.user_email})"

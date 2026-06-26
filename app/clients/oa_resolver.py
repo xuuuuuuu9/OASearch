@@ -1,15 +1,16 @@
-"""OA URL resolver — orchestrates 6 sources in parallel per DOI.
+"""OA URL resolver — orchestrates 7 sources in parallel per DOI.
 
 Priority order (lower number = try first when downloading):
-  10  Europe PMC      — direct PMC PDF, no Cloudflare, NIH speed
-  15  OpenAlex repo   — repository-hosted PDFs (preprints, institutional)
-  20  CrossRef link   — publisher-supplied
-  25  OpenAlex pub    — OpenAlex's publisher pick
+  10  Europe PMC         — direct PMC PDF, no Cloudflare, NIH speed
+  12  Semantic Scholar   — `openAccessPdf` field, catches IR PDFs OpenAlex misses
+  15  OpenAlex repo      — repository-hosted PDFs (preprints, institutional)
+  20  CrossRef link      — publisher-supplied
+  25  OpenAlex pub       — OpenAlex's publisher pick
   30  Unpaywall best
   40  Unpaywall alts
-  50  URL patterns    — arxiv/biorxiv/chemrxiv deterministic
-  60  Landing page    — meta[citation_pdf_url], last resort
-  70  Sci-Hub         — opt-in fallback for non-OA papers (legal status varies)
+  50  URL patterns       — arxiv/biorxiv/chemrxiv deterministic
+  60  Landing page       — meta[citation_pdf_url], last resort
+  70  Sci-Hub            — opt-in fallback for non-OA papers (legal status varies)
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from .europepmc import EuropePMCClient
 from .landing_page import scrape_pdf_urls
 from .openalex import OpenAlexClient
 from .scihub import resolve_via_scihub
+from .semantic_scholar import SemanticScholarClient
 from .unpaywall import UnpaywallClient
 from .url_patterns import infer_urls
 
@@ -41,6 +43,7 @@ class Candidate:
 SOURCE_PRIORITY = {
     "pmc":                10,
     "ncbi-pmc":           11,
+    "semantic-scholar":   12,
     "openalex-repo":      15,
     "crossref-link":      20,
     "openalex-pub":       25,
@@ -88,6 +91,7 @@ async def resolve(
     unpaywall: Optional[UnpaywallClient] = None,
     europepmc: Optional[EuropePMCClient] = None,
     openalex: Optional[OpenAlexClient] = None,
+    semantic_scholar: Optional[SemanticScholarClient] = None,
     scrape_landing: bool = True,
 ) -> tuple[list[Candidate], dict[str, Any]]:
     """Resolve a DOI to candidate URLs from all available sources concurrently.
@@ -128,7 +132,18 @@ async def resolve(
             log.debug("openalex lookup failed %s: %r", doi, e)
             return None
 
-    upw, epmc, oalex = await asyncio.gather(_unpaywall(), _epmc(), _oalex())
+    async def _ss() -> dict[str, Any]:
+        if not semantic_scholar:
+            return {}
+        try:
+            return await semantic_scholar.lookup(doi)
+        except Exception as e:
+            log.debug("semantic-scholar lookup failed %s: %r", doi, e)
+            return {}
+
+    upw, epmc, oalex, ss = await asyncio.gather(
+        _unpaywall(), _epmc(), _oalex(), _ss(),
+    )
 
     candidates: list[Candidate] = []
 
@@ -143,6 +158,13 @@ async def resolve(
         candidates.append(Candidate(
             EuropePMCClient.ncbi_pdf_url_for_pmcid(pmcid),
             "ncbi-pmc", SOURCE_PRIORITY["ncbi-pmc"],
+        ))
+
+    # 1b. Semantic Scholar's openAccessPdf
+    if ss and ss.get("pdf_url"):
+        candidates.append(Candidate(
+            ss["pdf_url"], "semantic-scholar",
+            SOURCE_PRIORITY["semantic-scholar"],
         ))
 
     # 2. OpenAlex repository PDFs (high priority — usually bypass publisher CF)
@@ -202,7 +224,12 @@ async def resolve(
         oa_info["is_oa"] = False
     # Only override is_oa to True for *strong* sources.
     if not oa_info.get("is_oa"):
-        strong_sources = {"pmc", "ncbi-pmc", "openalex-repo", "arxiv", "biorxiv", "chemrxiv", "researchsquare"}
+        strong_sources = {
+            "pmc", "ncbi-pmc",
+            "openalex-repo",
+            "semantic-scholar",
+            "arxiv", "biorxiv", "chemrxiv", "researchsquare",
+        }
         if any(c.source in strong_sources for c in deduped):
             oa_info["is_oa"] = True
 
@@ -216,14 +243,18 @@ async def resolve_many(
     unpaywall_concurrency: int = 20,
     epmc_concurrency: int = 16,
     openalex_concurrency: int = 12,
+    semantic_scholar_concurrency: int = 8,
 ) -> dict[str, tuple[list[Candidate], dict[str, Any]]]:
     """Batch entry point used by the search task. Shares clients across DOIs."""
     if not dois:
         return {}
 
-    async with UnpaywallClient(concurrency=unpaywall_concurrency) as upw, \
-               EuropePMCClient(concurrency=epmc_concurrency) as epmc, \
-               OpenAlexClient(concurrency=openalex_concurrency) as oalex:
+    async with (
+        UnpaywallClient(concurrency=unpaywall_concurrency) as upw,
+        EuropePMCClient(concurrency=epmc_concurrency) as epmc,
+        OpenAlexClient(concurrency=openalex_concurrency) as oalex,
+        SemanticScholarClient(concurrency=semantic_scholar_concurrency) as ss,
+    ):
         async def _one(d: str) -> tuple[str, tuple[list[Candidate], dict[str, Any]]]:
             return d, await resolve(
                 d,
@@ -231,6 +262,7 @@ async def resolve_many(
                 unpaywall=upw,
                 europepmc=epmc,
                 openalex=oalex,
+                semantic_scholar=ss,
                 scrape_landing=False,   # batch mode: skip slow landing scrape
             )
 
