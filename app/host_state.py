@@ -115,3 +115,22 @@ class HostStateTracker:
     async def is_suppressed(self, url: str) -> bool:
         st = await self._get(self.host_of(url))
         return time.monotonic() < st.suppressed_until
+
+    async def clear_all_suppressions(self) -> int:
+        """Reset every host's 403 counter and suppression deadline.
+
+        Returns the number of hosts that were actively suppressed when called
+        (informational only). Useful when a user knows a publisher's CF block
+        has expired and wants to retry without waiting out the full timer.
+        """
+        async with self._lock:
+            now = time.monotonic()
+            cleared = sum(
+                1 for st in self._states.values() if st.suppressed_until > now
+            )
+            for st in self._states.values():
+                st.suppressed_until = 0.0
+                st.backoff_until = 0.0
+                st.consecutive_403 = 0
+        log.info("cleared host suppressions: %d hosts were active", cleared)
+        return cleared

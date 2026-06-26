@@ -157,6 +157,11 @@ def _row(item) -> rx.Component:
                 href="https://doi.org/" + item.doi.to_string(use_json=False),
                 is_external=True,
             ),
+            rx.link(
+                button("sci-hub", variant="ghost", icon=EXTERNAL_LINK),
+                href="https://sci-hub.ru/" + item.doi.to_string(use_json=False),
+                is_external=True,
+            ),
             button("删除", variant="danger", icon=TRASH,
                    on_click=LibraryState.request_delete(item.doi)),
             spacing="2",

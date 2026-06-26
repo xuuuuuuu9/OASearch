@@ -4,7 +4,7 @@ from __future__ import annotations
 import reflex as rx
 
 from frontend.design import patterns
-from frontend.design.icons import REFRESH
+from frontend.design.icons import EXTERNAL_LINK, REFRESH
 from frontend.design.primitives import badge, button, divider, text
 from frontend.design.tokens import GAP
 from frontend.state.downloads_state import DownloadsState
@@ -68,8 +68,23 @@ def _items_table() -> rx.Component:
                     rx.table.cell(
                         rx.cond(
                             item.status == "failed",
-                            button("重试", variant="ghost",
-                                   on_click=DownloadsState.retry_item(item.doi)),
+                            rx.hstack(
+                                button("重试", variant="ghost",
+                                       on_click=DownloadsState.retry_item(item.doi)),
+                                rx.link(
+                                    button("DOI", variant="ghost",
+                                           icon=EXTERNAL_LINK),
+                                    href="https://doi.org/" + item.doi,
+                                    is_external=True,
+                                ),
+                                rx.link(
+                                    button("sci-hub", variant="ghost",
+                                           icon=EXTERNAL_LINK),
+                                    href="https://sci-hub.ru/" + item.doi,
+                                    is_external=True,
+                                ),
+                                spacing="1",
+                            ),
                             rx.fragment(),
                         ),
                     ),

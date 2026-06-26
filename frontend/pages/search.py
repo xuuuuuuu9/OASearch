@@ -51,6 +51,11 @@ def _paper_row(paper) -> rx.Component:
             href="https://doi.org/" + doi.to_string(use_json=False),
             is_external=True,
         ),
+        secondary_action=rx.link(
+            button("sci-hub", variant="ghost", icon=EXTERNAL_LINK),
+            href="https://sci-hub.ru/" + doi.to_string(use_json=False),
+            is_external=True,
+        ),
     )
 
 
