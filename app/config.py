@@ -41,10 +41,10 @@ class Settings(BaseSettings):
     default_search_rows: int = 100
     max_search_rows: int = 500
 
-    # Sci-Hub fallback (opt-in). When enabled, sci-hub is added as the lowest-
-    # priority candidate source — only used when no OA candidate exists.
-    # Legal status depends on jurisdiction. Do not redistribute downloaded files.
-    enable_scihub: bool = False
+    # Sci-Hub fallback. Adds sci-hub as the lowest-priority candidate source
+    # (only used when no OA candidate exists). Set ENABLE_SCIHUB=false to
+    # disable. Legal status depends on jurisdiction.
+    enable_scihub: bool = True
     # Comma-separated override of the default mirror list. Leave empty to use
     # the built-in DEFAULT_MIRRORS in app/clients/scihub.py.
     scihub_mirrors: str = ""
