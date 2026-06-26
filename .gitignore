@@ -1,0 +1,28 @@
+.web
+*.db
+.states
+*.py[cod]
+assets/external/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+.env
+
+# reflex runtime artifacts
+reflex.lock/
+reflex.err.log
+reflex.out.log
+uvicorn-*.log
+uvicorn-*.err.log
+uvicorn-*.out.log
+
+# agent / IDE state
+.claude/
+.codex/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
