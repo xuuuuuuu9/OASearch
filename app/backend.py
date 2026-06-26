@@ -1,6 +1,7 @@
 """Pure FastAPI backend used by the Reflex frontend."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -18,8 +19,33 @@ logging.basicConfig(
 log = logging.getLogger("nplibrary")
 
 
+def _bootstrap_schema_sync() -> None:
+    """Create the SQLite schema synchronously at module import.
+
+    Reflex's `api_transformer=backend_app` only mounts our routes; it does
+    NOT invoke this app's lifespan, so we can't rely on FastAPI's lifespan
+    to create tables. Run synchronously here so the schema exists before
+    any request lands.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop — safe to run a one-shot.
+        asyncio.run(init_db())
+        return
+    # We're already inside a running loop (atypical at import time).
+    # Skip; the FastAPI lifespan below will catch it in direct-uvicorn mode.
+    log.debug("skipping sync init_db; event loop already running")
+
+
+_bootstrap_schema_sync()
+
+
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
+    # In direct-uvicorn mode this still runs (idempotent). In Reflex mode
+    # this lifespan is not invoked; the module-level _bootstrap_schema_sync
+    # call above handles it.
     await init_db()
     if (
         settings.user_email == "anonymous@example.com"
