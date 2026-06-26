@@ -1,0 +1,21 @@
+# Force consistent line endings across platforms.
+* text=auto eol=lf
+
+# Treat these as binary regardless.
+*.db binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Pin certain text formats to LF so editors don't fight git.
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
