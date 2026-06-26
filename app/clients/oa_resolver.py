@@ -9,6 +9,7 @@ Priority order (lower number = try first when downloading):
   40  Unpaywall alts
   50  URL patterns    — arxiv/biorxiv/chemrxiv deterministic
   60  Landing page    — meta[citation_pdf_url], last resort
+  70  Sci-Hub         — opt-in fallback for non-OA papers (legal status varies)
 """
 from __future__ import annotations
 
@@ -17,10 +18,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from ..config import settings
 from .crossref import parse_work  # only for type
 from .europepmc import EuropePMCClient
 from .landing_page import scrape_pdf_urls
 from .openalex import OpenAlexClient
+from .scihub import resolve_via_scihub
 from .unpaywall import UnpaywallClient
 from .url_patterns import infer_urls
 
@@ -48,6 +51,7 @@ SOURCE_PRIORITY = {
     "chemrxiv":           50,
     "researchsquare":     50,
     "landing":            60,
+    "scihub":             70,
 }
 
 
@@ -175,6 +179,16 @@ async def resolve(
                 deduped.append(Candidate(url, "landing", SOURCE_PRIORITY["landing"]))
         except Exception as e:
             log.debug("landing scrape failed %s: %r", doi, e)
+
+    # 8. Sci-Hub fallback — opt-in via ENABLE_SCIHUB, only if nothing else found.
+    # Adds extra round-trip(s) to mirrors, so we gate it to the no-OA case.
+    if settings.enable_scihub and not deduped:
+        try:
+            override = tuple(settings.scihub_mirrors_list) or None
+            for url in await resolve_via_scihub(doi, mirrors=override):
+                deduped.append(Candidate(url, "scihub", SOURCE_PRIORITY["scihub"]))
+        except Exception as e:
+            log.debug("scihub fallback failed %s: %r", doi, e)
 
     oa_info = {
         "is_oa": (upw or {}).get("is_oa") if upw else None,

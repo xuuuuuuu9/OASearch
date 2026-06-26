@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     default_search_rows: int = 100
     max_search_rows: int = 500
 
+    # Sci-Hub fallback (opt-in). When enabled, sci-hub is added as the lowest-
+    # priority candidate source — only used when no OA candidate exists.
+    # Legal status depends on jurisdiction. Do not redistribute downloaded files.
+    enable_scihub: bool = False
+    # Comma-separated override of the default mirror list. Leave empty to use
+    # the built-in DEFAULT_MIRRORS in app/clients/scihub.py.
+    scihub_mirrors: str = ""
+
     @property
     def app_user_agent(self) -> str:
         return f"NPLibrary/0.1 (mailto:{self.user_email})"
@@ -52,6 +60,12 @@ class Settings(BaseSettings):
     @property
     def resolved_db_path(self) -> Path:
         return self.db_path or self.data_dir / "library.db"
+
+    @property
+    def scihub_mirrors_list(self) -> list[str]:
+        if not self.scihub_mirrors:
+            return []
+        return [m.strip() for m in self.scihub_mirrors.split(",") if m.strip()]
 
 
 settings = Settings()
