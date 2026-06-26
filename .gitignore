@@ -26,3 +26,6 @@ uvicorn-*.out.log
 *.swp
 .DS_Store
 Thumbs.db
+
+# Reference implementations consulted but not part of this project.
+pypaperretriever/
