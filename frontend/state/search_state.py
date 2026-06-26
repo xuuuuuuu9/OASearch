@@ -146,44 +146,57 @@ class SearchState(rx.State):
         """Select every result regardless of OA / download status."""
         self.selected_dois = [p.doi for p in self.papers]
 
-    async def save_selected_metadata(self) -> None:
+    async def save_selected_metadata(self):
         """Mark selected papers as saved=1 (without triggering download)."""
         if not self.selected_dois:
             self.error_message = "请先勾选论文"
             return
+        n = len(self.selected_dois)
         self.loading = True
         self.error_message = ""
         try:
             await api.post_json("/api/papers/save", {"dois": list(self.selected_dois)})
-            # 标记为已入库后刷新本地状态
             saved_set = set(self.selected_dois)
             self.papers = [
                 PaperRow(**{**p.__dict__, "saved": True}) if p.doi in saved_set else p
                 for p in self.papers
             ]
             self.selected_dois = []
+            self.loading = False
+            return rx.toast.success(f"已加入本地库 ({n} 篇)")
         except httpx.HTTPError:
             self.error_message = "保存到本地库失败"
         finally:
             self.loading = False
 
-    async def start_download(self) -> None:
+    async def start_download(self):
         if not self.selected_dois:
             self.error_message = "先选择要下载的论文"
             return
+        n = len(self.selected_dois)
         self.loading = True
         self.error_message = ""
         try:
             await api.post_json("/api/download-tasks", {"dois": self.selected_dois})
-            # 创建下载任务时后端已自动 saved=1
             saved_set = set(self.selected_dois)
             self.papers = [
                 PaperRow(**{**p.__dict__, "saved": True}) if p.doi in saved_set else p
                 for p in self.papers
             ]
             self.selected_dois = []
+            self.loading = False
+            return rx.toast.success(
+                f"已创建下载任务 ({n} 篇)，可前往「下载」页查看进度"
+            )
+        except httpx.HTTPStatusError as exc:
+            detail = ""
+            try:
+                detail = exc.response.json().get("detail", "")
+            except Exception:
+                pass
+            self.error_message = f"发起下载任务失败: {detail or exc.response.status_code}"
         except httpx.HTTPError:
-            self.error_message = "发起下载任务失败"
+            self.error_message = "发起下载任务失败：无法连接后端"
         finally:
             self.loading = False
 

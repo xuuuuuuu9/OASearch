@@ -18,14 +18,25 @@ class DownloadsState(rx.State):
     _loaded: bool = False
     polling: bool = False
 
-    async def load_page(self) -> None:
-        if self._loaded:
-            return
+    async def load_page(self):
+        # Downloads is a live dashboard — always re-fetch on visit so tasks
+        # created from other pages (e.g. search) show up immediately. The
+        # sentinel pattern from other pages is wrong here.
         await self._do_load()
         self._loaded = True
+        # If the auto-selected task is still in flight, start polling so the
+        # progress bar updates without the user having to click the task.
+        if self.selected_task.id and self.selected_task.status in (
+            "pending", "running"
+        ):
+            return DownloadsState.poll_task
 
-    async def refresh(self) -> None:
+    async def refresh(self):
         await self._do_load()
+        if self.selected_task.id and self.selected_task.status in (
+            "pending", "running"
+        ):
+            return DownloadsState.poll_task
 
     async def _do_load(self) -> None:
         self.loading = True
@@ -33,11 +44,21 @@ class DownloadsState(rx.State):
         try:
             task_rows = await api.get_json("/api/download-tasks", params={"limit": 50})
             self.tasks = [download_task_from_dict(item) for item in task_rows]
-            if self.tasks and not self.selected_task.id:
-                detail = await api.get_json(
-                    f"/api/download-tasks/{self.tasks[0].id}"
-                )
-                self.selected_task = download_task_from_dict(detail)
+            if not self.tasks:
+                return
+            # Auto-select strategy:
+            #   - if no task selected yet, pick the most recent
+            #   - if previously selected task is still in the list, refresh it
+            #     so the detail panel reflects current status
+            #   - otherwise (selection went stale), fall back to most recent
+            known_ids = {t.id for t in self.tasks}
+            target_id = (
+                self.selected_task.id
+                if self.selected_task.id and self.selected_task.id in known_ids
+                else self.tasks[0].id
+            )
+            detail = await api.get_json(f"/api/download-tasks/{target_id}")
+            self.selected_task = download_task_from_dict(detail)
         except httpx.HTTPError:
             self.error_message = "下载任务加载失败"
         finally:

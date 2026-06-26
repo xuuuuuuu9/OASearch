@@ -59,7 +59,10 @@ async def test_library_load_page_idempotent():
     assert mock_get.call_count == first
 
 
-async def test_downloads_load_page_idempotent():
+async def test_downloads_load_page_always_refetches():
+    """Downloads is a live dashboard — load_page should re-fetch every visit,
+    NOT cache like the other pages do. New tasks created elsewhere must
+    appear when the user navigates back."""
     state = DownloadsState()
     with patch("frontend.state.downloads_state.api.get_json",
                new=AsyncMock(return_value=[])) as mock_get:
@@ -67,7 +70,8 @@ async def test_downloads_load_page_idempotent():
         first = mock_get.call_count
         await state.load_page()
     assert state._loaded is True
-    assert mock_get.call_count == first
+    # second call MUST also fetch (no sentinel) — that's the whole point
+    assert mock_get.call_count > first
 
 
 async def test_journals_load_page_idempotent():
